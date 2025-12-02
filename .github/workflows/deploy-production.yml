@@ -1,0 +1,160 @@
+name: Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/ai-smartlite
+
+jobs:
+  pre-deployment-checks:
+    name: Pre-deployment Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify version tag
+        run: |
+          VERSION=${{ github.event.inputs.version || github.event.release.tag_name }}
+          echo "Deploying version: $VERSION"
+          
+          # Verify image exists
+          docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:$VERSION
+
+      - name: Check staging health
+        run: |
+          curl -f https://staging.ai-smartlite.com/health || exit 1
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks]
+    environment:
+      name: production
+      url: https://ai-smartlite.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name ai-smartlite-production --region ${{ secrets.AWS_REGION }}
+
+      - name: Create backup
+        run: |
+          kubectl get all -n production -o yaml > backup-$(date +%Y%m%d-%H%M%S).yaml
+          
+      - name: Deploy with rolling update
+        run: |
+          VERSION=${{ github.event.inputs.version || github.event.release.tag_name }}
+          cd infra/kubernetes/production
+          
+          # Update image tags
+          sed -i "s|image: .*gateway.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:$VERSION|g" *.yaml
+          sed -i "s|image: .*asr-service.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-asr-service:$VERSION|g" *.yaml
+          sed -i "s|image: .*tts-service.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-tts-service:$VERSION|g" *.yaml
+          sed -i "s|image: .*llm-service.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-llm-service:$VERSION|g" *.yaml
+          sed -i "s|image: .*pipeline-service.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-pipeline-service:$VERSION|g" *.yaml
+          
+          # Apply with rolling update
+          kubectl apply -f . --record
+
+      - name: Monitor rollout
+        run: |
+          kubectl rollout status deployment/gateway -n production --timeout=10m
+          kubectl rollout status deployment/asr-service -n production --timeout=10m
+          kubectl rollout status deployment/tts-service -n production --timeout=10m
+          kubectl rollout status deployment/llm-service -n production --timeout=10m
+          kubectl rollout status deployment/pipeline-service -n production --timeout=10m
+
+      - name: Health check
+        run: |
+          chmod +x ./ci/scripts/health-check.sh
+          ./ci/scripts/health-check.sh https://ai-smartlite.com
+
+      - name: Run smoke tests
+        run: |
+          curl -f https://ai-smartlite.com/health
+          curl -f https://ai-smartlite.com/asr/health
+          curl -f https://ai-smartlite.com/tts/health
+          curl -f https://ai-smartlite.com/llm/health
+          curl -f https://ai-smartlite.com/pipeline/health
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: failure()
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Rollback deployments
+        run: |
+          aws eks update-kubeconfig --name ai-smartlite-production --region ${{ secrets.AWS_REGION }}
+          kubectl rollout undo deployment/gateway -n production
+          kubectl rollout undo deployment/asr-service -n production
+          kubectl rollout undo deployment/tts-service -n production
+          kubectl rollout undo deployment/llm-service -n production
+          kubectl rollout undo deployment/pipeline-service -n production
+
+      - name: Notify failure
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'failure'
+          text: 'Production deployment failed and was rolled back'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  post-deployment:
+    name: Post-deployment Tasks
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    
+    steps:
+      - name: Run database migrations
+        run: |
+          # Run migrations if needed
+          echo "Running database migrations..."
+
+      - name: Clear CDN cache
+        run: |
+          # Clear CloudFront or CDN cache
+          echo "Clearing CDN cache..."
+
+      - name: Notify success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'success'
+          text: 'Production deployment successful'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

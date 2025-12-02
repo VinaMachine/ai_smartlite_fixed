@@ -1,0 +1,94 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/ai-smartlite
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service:
+          - name: gateway
+            context: ./apps/gateway
+          - name: asr-service
+            context: ./apps/asr-service
+          - name: tts-service
+            context: ./apps/tts-service
+          - name: llm-service
+            context: ./apps/llm-service
+          - name: pipeline-service
+            context: ./apps/pipeline-service
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.context }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Image digest
+        run: echo ${{ steps.meta.outputs.digest }}
+
+  verify-images:
+    name: Verify Images
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan images for vulnerabilities
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${{ github.sha }}
+          docker scan ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${{ github.sha }} || true

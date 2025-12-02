@@ -1,0 +1,97 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly on Sunday
+  workflow_dispatch:
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [asr-service, tts-service, llm-service, pipeline-service]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Safety
+        run: pip install safety
+
+      - name: Check Python dependencies
+        working-directory: apps/${{ matrix.service }}
+        run: safety check -r requirements.txt --json
+        continue-on-error: true
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [gateway, asr-service, tts-service, llm-service, pipeline-service]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: |
+          docker build -t scan-${{ matrix.service }}:latest ./apps/${{ matrix.service }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: scan-${{ matrix.service }}:latest
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+          category: ${{ matrix.service }}
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

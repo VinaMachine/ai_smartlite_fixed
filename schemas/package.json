@@ -1,0 +1,29 @@
+{
+  "name": "@ai-smartlite/schemas",
+  "version": "1.0.0",
+  "description": "Shared database schemas and types for AI_SMARTLITE",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "generate": "drizzle-kit generate:mysql",
+    "migrate": "tsx src/migrate.ts",
+    "studio": "drizzle-kit studio",
+    "push": "drizzle-kit push:mysql"
+  },
+  "keywords": [
+    "drizzle",
+    "mysql",
+    "schemas"
+  ],
+  "dependencies": {
+    "drizzle-orm": "^0.29.0",
+    "mysql2": "^3.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.25",
+    "drizzle-kit": "^0.20.6",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

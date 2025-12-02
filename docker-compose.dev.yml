@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ai-smartlite-mysql-dev
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ai_smartlite_dev
+      MYSQL_USER: devuser
+      MYSQL_PASSWORD: devpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+    networks:
+      - ai-smartlite-dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-smartlite-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - ai-smartlite-dev
+
+networks:
+  ai-smartlite-dev:
+    driver: bridge
+
+volumes:
+  mysql_dev_data:

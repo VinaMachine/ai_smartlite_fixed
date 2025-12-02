@@ -1,0 +1,138 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = 'ghcr.io'
+        IMAGE_PREFIX = 'ai-smartlite'
+        PYTHON_VERSION = '3.11'
+        NODE_VERSION = '20'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Lint') {
+            parallel {
+                stage('Lint Python Services') {
+                    steps {
+                        script {
+                            def services = ['asr-service', 'tts-service', 'llm-service', 'pipeline-service']
+                            services.each { service ->
+                                dir("apps/${service}") {
+                                    sh '''
+                                        pip install flake8 black mypy
+                                        pip install -r requirements.txt
+                                        black --check .
+                                        flake8 .
+                                        mypy . --ignore-missing-imports
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                stage('Lint Gateway') {
+                    steps {
+                        dir('apps/gateway') {
+                            sh '''
+                                npm ci
+                                npm run lint
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                dir('tests') {
+                    sh '''
+                        npm ci
+                        npm run test:integration
+                        npm run test:contract
+                        npm run test:coverage
+                    '''
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'tests/coverage',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('Build Images') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    def services = ['gateway', 'asr-service', 'tts-service', 'llm-service', 'pipeline-service']
+                    services.each { service ->
+                        dir("apps/${service}") {
+                            sh """
+                                docker build -t ${REGISTRY}/${IMAGE_PREFIX}-${service}:${env.BUILD_NUMBER} .
+                                docker push ${REGISTRY}/${IMAGE_PREFIX}-${service}:${env.BUILD_NUMBER}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh '''
+                    kubectl set image deployment/gateway gateway=${REGISTRY}/${IMAGE_PREFIX}-gateway:${BUILD_NUMBER} -n staging
+                    kubectl set image deployment/asr-service asr-service=${REGISTRY}/${IMAGE_PREFIX}-asr-service:${BUILD_NUMBER} -n staging
+                    kubectl set image deployment/tts-service tts-service=${REGISTRY}/${IMAGE_PREFIX}-tts-service:${BUILD_NUMBER} -n staging
+                    kubectl set image deployment/llm-service llm-service=${REGISTRY}/${IMAGE_PREFIX}-llm-service:${BUILD_NUMBER} -n staging
+                    kubectl set image deployment/pipeline-service pipeline-service=${REGISTRY}/${IMAGE_PREFIX}-pipeline-service:${BUILD_NUMBER} -n staging
+                    kubectl rollout status deployment/gateway -n staging
+                '''
+            }
+        }
+        
+        stage('Deploy to Production') {
+            when {
+                tag pattern: "v\\d+\\.\\d+\\.\\d+", comparator: "REGEXP"
+            }
+            steps {
+                input message: 'Deploy to Production?', ok: 'Deploy'
+                sh '''
+                    kubectl set image deployment/gateway gateway=${REGISTRY}/${IMAGE_PREFIX}-gateway:${TAG_NAME} -n production
+                    kubectl set image deployment/asr-service asr-service=${REGISTRY}/${IMAGE_PREFIX}-asr-service:${TAG_NAME} -n production
+                    kubectl set image deployment/tts-service tts-service=${REGISTRY}/${IMAGE_PREFIX}-tts-service:${TAG_NAME} -n production
+                    kubectl set image deployment/llm-service llm-service=${REGISTRY}/${IMAGE_PREFIX}-llm-service:${TAG_NAME} -n production
+                    kubectl set image deployment/pipeline-service pipeline-service=${REGISTRY}/${IMAGE_PREFIX}-pipeline-service:${TAG_NAME} -n production
+                    kubectl rollout status deployment/gateway -n production
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}

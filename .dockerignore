@@ -1,0 +1,6 @@
+# Docker
+.env.docker
+docker-compose.override.yml
+
+# Volumes
+**/volumes/

@@ -1,0 +1,156 @@
+# Azure DevOps Pipeline
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  tags:
+    include:
+      - v*
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+variables:
+  REGISTRY: 'ghcr.io'
+  IMAGE_PREFIX: 'ai-smartlite'
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20.x'
+
+stages:
+  - stage: Lint
+    jobs:
+      - job: LintPython
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          matrix:
+            AsrService:
+              SERVICE: 'asr-service'
+            TtsService:
+              SERVICE: 'tts-service'
+            LlmService:
+              SERVICE: 'llm-service'
+            PipelineService:
+              SERVICE: 'pipeline-service'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+          - script: |
+              cd apps/$(SERVICE)
+              pip install flake8 black mypy
+              pip install -r requirements.txt
+              black --check .
+              flake8 .
+              mypy . --ignore-missing-imports
+            displayName: 'Lint Python Service'
+      
+      - job: LintGateway
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(NODE_VERSION)
+          - script: |
+              cd apps/gateway
+              npm ci
+              npm run lint
+            displayName: 'Lint Gateway'
+
+  - stage: Test
+    dependsOn: Lint
+    jobs:
+      - job: RunTests
+        pool:
+          vmImage: 'ubuntu-latest'
+        services:
+          mysql: mysql:8.0
+          redis: redis:7-alpine
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(NODE_VERSION)
+          - script: |
+              cd tests
+              npm ci
+              npm run test:integration
+              npm run test:contract
+              npm run test:coverage
+            displayName: 'Run Tests'
+          - task: PublishCodeCoverageResults@1
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: 'tests/coverage/cobertura-coverage.xml'
+
+  - stage: Build
+    dependsOn: Test
+    condition: and(succeeded(), in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/develop'))
+    jobs:
+      - job: BuildImages
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          matrix:
+            Gateway:
+              SERVICE: 'gateway'
+            AsrService:
+              SERVICE: 'asr-service'
+            TtsService:
+              SERVICE: 'tts-service'
+            LlmService:
+              SERVICE: 'llm-service'
+            PipelineService:
+              SERVICE: 'pipeline-service'
+        steps:
+          - task: Docker@2
+            inputs:
+              command: 'buildAndPush'
+              repository: '$(IMAGE_PREFIX)-$(SERVICE)'
+              dockerfile: 'apps/$(SERVICE)/Dockerfile'
+              containerRegistry: 'ghcr'
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+  - stage: DeployStaging
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - deployment: DeployToStaging
+        environment: 'staging'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: Kubernetes@1
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    namespace: 'staging'
+                    command: 'set'
+                    arguments: 'image deployment/gateway gateway=$(REGISTRY)/$(IMAGE_PREFIX)-gateway:$(Build.SourceVersion)'
+
+  - stage: DeployProduction
+    dependsOn: Build
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+    jobs:
+      - deployment: DeployToProduction
+        environment: 'production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: Kubernetes@1
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    namespace: 'production'
+                    command: 'set'
+                    arguments: 'image deployment/gateway gateway=$(REGISTRY)/$(IMAGE_PREFIX)-gateway:$(Build.SourceBranchName)'
