@@ -1,0 +1,36 @@
+{
+  "version": "3.0",
+  "circuit_breakers": [
+    {
+      "name": "asr_circuit_breaker",
+      "service": "asr-service",
+      "failure_threshold": 5,
+      "success_threshold": 2,
+      "timeout_seconds": 30,
+      "half_open_requests": 3,
+      "enabled": true
+    },
+    {
+      "name": "llm_circuit_breaker",
+      "service": "llm-service",
+      "failure_threshold": 3,
+      "success_threshold": 2,
+      "timeout_seconds": 60,
+      "half_open_requests": 2,
+      "enabled": true
+    },
+    {
+      "name": "tts_circuit_breaker",
+      "service": "tts-service",
+      "failure_threshold": 5,
+      "success_threshold": 2,
+      "timeout_seconds": 45,
+      "half_open_requests": 3,
+      "enabled": true
+    }
+  ],
+  "global": {
+    "hot_reload": true,
+    "reload_interval_seconds": 30
+  }
+}

@@ -1,0 +1,25 @@
+version: 0.1
+log:
+  level: info
+  formatter: json
+storage:
+  filesystem:
+    rootdirectory: /var/lib/registry
+  cache:
+    blobdescriptor: inmemory
+  maintenance:
+    uploadpurging:
+      enabled: true
+      age: 168h
+      interval: 24h
+      dryrun: false
+http:
+  addr: 0.0.0.0:5000
+  headers:
+    X-Content-Type-Options: [nosniff]
+    X-Registry-Region: [eu-west-1]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3

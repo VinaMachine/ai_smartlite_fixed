@@ -1,0 +1,36 @@
+{
+  "iceServers": [
+    {
+      "urls": [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302",
+        "stun:stun2.l.google.com:19302"
+      ]
+    },
+    {
+      "urls": "turn:turn.example.com:3478",
+      "username": "smartlite",
+      "credential": "${TURN_CREDENTIAL}",
+      "credentialType": "password"
+    },
+    {
+      "urls": "turns:turn.example.com:5349",
+      "username": "smartlite",
+      "credential": "${TURN_CREDENTIAL}",
+      "credentialType": "password"
+    }
+  ],
+  "iceTransportPolicy": "all",
+  "iceCandidatePoolSize": 10,
+  "bundlePolicy": "max-bundle",
+  "rtcpMuxPolicy": "require",
+  "configuration": {
+    "enableIPv6": true,
+    "enableDscp": true,
+    "tcpCandidatePolicy": "enabled"
+  },
+  "fallback": {
+    "enableRelay": true,
+    "relayOnly": false
+  }
+}

@@ -1,0 +1,18 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-scenario
+  description: Simulate network latency
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: ai-smartlite
+  delay:
+    latency: '100ms'
+    correlation: '50'
+    jitter: '50ms'
+  duration: '60s'

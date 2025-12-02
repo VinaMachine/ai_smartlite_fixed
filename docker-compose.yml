@@ -1,40 +1,196 @@
 version: '3.8'
 
 services:
+  # ============================================
+  # Observability Stack
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - smartlite-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Secret Management & Compliance
+  # ============================================
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN:-dev-token}
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    volumes:
+      - ./config/vault:/vault/config:ro
+      - vault-data:/vault/file
+      - ./secrets:/vault/secrets
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - smartlite-network
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  secret-rotator:
+    build: ./scripts/secret-rotator
+    container_name: secret-rotator
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+      - ROTATION_INTERVAL=2592000
+    volumes:
+      - ./config/secret-rotation:/app/config:ro
+    networks:
+      - smartlite-network
+    depends_on:
+      - vault
+    restart: unless-stopped
+
+  sbom-generator:
+    image: anchore/syft:latest
+    container_name: sbom-generator
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./sbom-reports:/output
+    command: /bin/sh -c "while true; do sleep 3600; done"
+    networks:
+      - smartlite-network
+
+  # ============================================
+  # Gateway Service
+  # ============================================
   gateway:
     build: ./apps/gateway
+    container_name: gateway
     ports:
       - "8080:8080"
+      - "8443:8443"
     networks:
       - smartlite-network
     depends_on:
       - input-handler
+      - prometheus
+      - vault
     environment:
       - SERVICE_NAME=gateway
       - MAX_CONCURRENT_SESSIONS=80
+      - JWT_ROTATION_INTERVAL=86400
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
     volumes:
       - ./config:/app/config:ro
+      - ./config/policy_rules:/app/policy_rules:ro
+      - ./certs:/app/certs:ro
+      - ./secrets:/app/secrets:ro
+      - audit-logs:/app/logs/audit
     deploy:
       resources:
         limits:
           cpus: "2"
           memory: 3G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
+  # ============================================
+  # Microservices Pipeline (A-J Steps)
+  # ============================================
   input-handler:
     build: ./apps/input-handler
+    container_name: input-handler
     ports:
       - "8081:8081"
+      - "8481:8481"
     environment:
       - SERVICE_NAME=input-handler
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   preprocessor:
     build: ./apps/preprocessor
+    container_name: preprocessor
     ports:
       - "8082:8082"
+      - "8482:8482"
     environment:
       - SERVICE_NAME=preprocessor
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
     deploy:
@@ -42,17 +198,30 @@ services:
         limits:
           cpus: "1"
           memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   asr-service:
     build: ./apps/asr-service
+    container_name: asr-service
     ports:
       - "8083:8083"
+      - "8483:8483"
     environment:
       - SERVICE_NAME=asr-service
       - MODEL_PATH=/models/asr
       - MAX_STREAMS=60
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
     volumes:
-      - ./models:/models
+      - ./models:/models:ro
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
     deploy:
@@ -60,26 +229,53 @@ services:
         limits:
           cpus: "4"
           memory: 6G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
   text-cleaner:
     build: ./apps/text-cleaner
+    container_name: text-cleaner
     ports:
       - "8084:8084"
+      - "8484:8484"
     environment:
       - SERVICE_NAME=text-cleaner
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   llm-service:
     build: ./apps/llm-service
+    container_name: llm-service
     ports:
       - "8085:8085"
+      - "8485:8485"
     environment:
       - SERVICE_NAME=llm-service
       - MODEL_PATH=/models/llm
       - MAX_CONCURRENT=8
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
     volumes:
-      - ./models:/models
+      - ./models:/models:ro
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
     deploy:
@@ -87,13 +283,27 @@ services:
         limits:
           cpus: "6"
           memory: 12G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
 
   semantic-formatter:
     build: ./apps/semantic-formatter
+    container_name: semantic-formatter
     ports:
       - "8086:8086"
+      - "8486:8486"
     environment:
       - SERVICE_NAME=semantic-formatter
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
     deploy:
@@ -101,18 +311,30 @@ services:
         limits:
           cpus: "1"
           memory: 1G
-
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   tts-service:
     build: ./apps/tts-service
+    container_name: tts-service
     ports:
       - "8087:8087"
+      - "8487:8487"
     environment:
       - SERVICE_NAME=tts-service
       - MODEL_PATH=/models/tts
       - SERVER_TTS_LIMIT=10
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
     volumes:
-      - ./models:/models
+      - ./models:/models:ro
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
     deploy:
@@ -120,37 +342,193 @@ services:
         limits:
           cpus: "1"
           memory: 2G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
   audio-post:
     build: ./apps/audio-post
+    container_name: audio-post
     ports:
       - "8088:8088"
+      - "8488:8488"
     environment:
       - SERVICE_NAME=audio-post
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   encoder:
     build: ./apps/encoder
+    container_name: encoder
     ports:
       - "8089:8089"
+      - "8489:8489"
     environment:
       - SERVICE_NAME=encoder
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+    volumes:
+      - ./certs:/app/certs:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8089/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   delivery:
     build: ./apps/delivery
+    container_name: delivery
     ports:
       - "8090:8090"
+      - "8490:8490"
     environment:
       - SERVICE_NAME=delivery
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-dev-token}
+      - TURN_SERVER_URL=${TURN_SERVER_URL:-turn:turn.example.com:3478}
+      - TURN_USERNAME=${TURN_USERNAME:-smartlite}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL}
+      - STUN_SERVER_URL=${STUN_SERVER_URL:-stun:stun.l.google.com:19302}
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./config/webrtc:/app/config/webrtc:ro
+      - audit-logs:/app/logs/audit
     networks:
       - smartlite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
+  # ============================================
+  # Chaos Engineering
+  # ============================================
+  chaos-mesh:
+    image: pingcap/chaos-mesh:latest
+    container_name: chaos-mesh
+    ports:
+      - "2333:2333"
+    volumes:
+      - ./config/chaos:/app/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - smartlite-network
+    privileged: true
+
+  chaos-controller:
+    build: ./tests/chaos
+    container_name: chaos-controller
+    environment:
+      - CHAOS_MESH_URL=http://chaos-mesh:2333
+    volumes:
+      - ./tests/chaos/scenarios:/app/scenarios:ro
+    networks:
+      - smartlite-network
+    depends_on:
+      - chaos-mesh
+    restart: unless-stopped
+
+  # ============================================
+  # Registry Mirrors (Multi-Region)
+  # ============================================
+  registry-mirror-us:
+    image: registry:2
+    container_name: registry-us
+    ports:
+      - "5001:5000"
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+      - REGISTRY_HTTP_ADDR=0.0.0.0:5000
+    volumes:
+      - registry-us-data:/var/lib/registry
+      - ./config/registry/us-config.yml:/etc/docker/registry/config.yml:ro
+    networks:
+      - smartlite-network
+    restart: unless-stopped
+
+  registry-mirror-eu:
+    image: registry:2
+    container_name: registry-eu
+    ports:
+      - "5002:5000"
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+      - REGISTRY_HTTP_ADDR=0.0.0.0:5000
+    volumes:
+      - registry-eu-data:/var/lib/registry
+      - ./config/registry/eu-config.yml:/etc/docker/registry/config.yml:ro
+    networks:
+      - smartlite-network
+    restart: unless-stopped
+
+  registry-mirror-asia:
+    image: registry:2
+    container_name: registry-asia
+    ports:
+      - "5003:5000"
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+      - REGISTRY_HTTP_ADDR=0.0.0.0:5000
+    volumes:
+      - registry-asia-data:/var/lib/registry
+      - ./config/registry/asia-config.yml:/etc/docker/registry/config.yml:ro
+    networks:
+      - smartlite-network
+    restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
 networks:
   smartlite-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
+# ============================================
+# Volumes
+# ============================================
 volumes:
   models:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
+  vault-data:
+    driver: local
+  audit-logs:
+    driver: local
+  registry-us-data:
+    driver: local
+  registry-eu-data:
+    driver: local
+  registry-asia-data:
+    driver: local

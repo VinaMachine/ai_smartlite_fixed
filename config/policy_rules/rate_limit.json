@@ -1,0 +1,53 @@
+{
+  "version": "3.0",
+  "rules": [
+    {
+      "name": "gateway_rate_limit",
+      "service": "gateway",
+      "limits": {
+        "requests_per_minute": 1000,
+        "concurrent_connections": 80,
+        "burst_size": 100
+      },
+      "enabled": true,
+      "priority": 1
+    },
+    {
+      "name": "asr_rate_limit",
+      "service": "asr-service",
+      "limits": {
+        "requests_per_minute": 500,
+        "max_streams": 60,
+        "burst_size": 50
+      },
+      "enabled": true,
+      "priority": 2
+    },
+    {
+      "name": "llm_rate_limit",
+      "service": "llm-service",
+      "limits": {
+        "requests_per_minute": 300,
+        "max_concurrent": 8,
+        "burst_size": 20
+      },
+      "enabled": true,
+      "priority": 2
+    },
+    {
+      "name": "tts_rate_limit",
+      "service": "tts-service",
+      "limits": {
+        "requests_per_minute": 400,
+        "max_concurrent": 10,
+        "burst_size": 30
+      },
+      "enabled": true,
+      "priority": 2
+    }
+  ],
+  "global": {
+    "hot_reload": true,
+    "reload_interval_seconds": 30
+  }
+}

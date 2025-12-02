@@ -1,0 +1,81 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ai-smartlite'
+    environment: 'production'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files:
+  # - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Gateway metrics
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Microservices
+  - job_name: 'input-handler'
+    static_configs:
+      - targets: ['input-handler:8081']
+    metrics_path: '/metrics'
+
+  - job_name: 'preprocessor'
+    static_configs:
+      - targets: ['preprocessor:8082']
+    metrics_path: '/metrics'
+
+  - job_name: 'asr-service'
+    static_configs:
+      - targets: ['asr-service:8083']
+    metrics_path: '/metrics'
+
+  - job_name: 'text-cleaner'
+    static_configs:
+      - targets: ['text-cleaner:8084']
+    metrics_path: '/metrics'
+
+  - job_name: 'llm-service'
+    static_configs:
+      - targets: ['llm-service:8085']
+    metrics_path: '/metrics'
+
+  - job_name: 'semantic-formatter'
+    static_configs:
+      - targets: ['semantic-formatter:8086']
+    metrics_path: '/metrics'
+
+  - job_name: 'tts-service'
+    static_configs:
+      - targets: ['tts-service:8087']
+    metrics_path: '/metrics'
+
+  - job_name: 'audio-post'
+    static_configs:
+      - targets: ['audio-post:8088']
+    metrics_path: '/metrics'
+
+  - job_name: 'encoder'
+    static_configs:
+      - targets: ['encoder:8089']
+    metrics_path: '/metrics'
+
+  - job_name: 'delivery'
+    static_configs:
+      - targets: ['delivery:8090']
+    metrics_path: '/metrics'

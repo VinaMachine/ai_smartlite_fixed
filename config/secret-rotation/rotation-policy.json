@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "rotation_policy": {
+    "enabled": true,
+    "interval_days": 30,
+    "notification_days_before": 7
+  },
+  "secrets": [
+    {
+      "name": "jwt_signing_key",
+      "type": "rsa",
+      "rotation_enabled": true,
+      "services": ["gateway"],
+      "vault_path": "secret/jwt"
+    },
+    {
+      "name": "database_credentials",
+      "type": "password",
+      "rotation_enabled": true,
+      "services": ["all"],
+      "vault_path": "secret/database"
+    },
+    {
+      "name": "api_keys",
+      "type": "token",
+      "rotation_enabled": true,
+      "services": ["gateway", "delivery"],
+      "vault_path": "secret/api"
+    },
+    {
+      "name": "tls_certificates",
+      "type": "certificate",
+      "rotation_enabled": true,
+      "services": ["all"],
+      "vault_path": "secret/tls",
+      "renewal_days_before": 30
+    },
+    {
+      "name": "turn_credentials",
+      "type": "password",
+      "rotation_enabled": true,
+      "services": ["delivery"],
+      "vault_path": "secret/turn"
+    }
+  ],
+  "notifications": {
+    "enabled": true,
+    "channels": ["email", "slack"],
+    "recipients": ["ops@example.com"]
+  }
+}
