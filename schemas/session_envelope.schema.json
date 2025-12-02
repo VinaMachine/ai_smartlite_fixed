@@ -1,0 +1,142 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Session Envelope",
+    "type": "object",
+    "required": [
+        "session_id",
+        "trace_id",
+        "user_id",
+        "client_tier",
+        "asr_pack",
+        "llm_tier",
+        "tts_pack",
+        "locale",
+        "device",
+        "client_llm_caps",
+        "device_tts_ok",
+        "region",
+        "domain_bias",
+        "consent",
+        "timestamp",
+        "codec"
+    ],
+    "properties": {
+        "session_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "trace_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "resume_token": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "client_tier": {
+            "type": "string"
+        },
+        "locale": {
+            "type": "string"
+        },
+        "voice_preference": {
+            "type": "string"
+        },
+        "asr_pack": {
+            "type": "string"
+        },
+        "llm_tier": {
+            "type": "string"
+        },
+        "tts_pack": {
+            "type": "string"
+        },
+        "region": {
+            "type": "string"
+        },
+        "domain_bias": {
+            "type": "string"
+        },
+        "codec": {
+            "type": "string",
+            "enum": [
+                "pcm16",
+                "opus32",
+                "opus48"
+            ]
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "consent": {
+            "type": "object",
+            "required": [
+                "accepted",
+                "timestamp"
+            ],
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "device": {
+            "type": "object",
+            "required": [
+                "os",
+                "version",
+                "ram_gb",
+                "mic_backend"
+            ],
+            "properties": {
+                "os": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "ram_gb": {
+                    "type": "integer"
+                },
+                "mic_backend": {
+                    "type": "string",
+                    "enum": [
+                        "webrtc",
+                        "loopback",
+                        "playback_capture",
+                        "virtual_mic"
+                    ]
+                }
+            }
+        },
+        "client_llm_caps": {
+            "type": "object",
+            "required": [
+                "max_tokens",
+                "supports_local_llm"
+            ],
+            "properties": {
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "supports_local_llm": {
+                    "type": "boolean"
+                }
+            }
+        }
+    }
+}

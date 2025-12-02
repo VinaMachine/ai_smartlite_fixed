@@ -1,0 +1,8 @@
+{
+    "version": "2.2",
+    "asr_sha256": "<hex>",
+    "llm_sha256": "<hex>",
+    "tts_sha256": "<hex>",
+    "manifest_sha256": "<hex>",
+    "allow_staging_mismatch": false
+}

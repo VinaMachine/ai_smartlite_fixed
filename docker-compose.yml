@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: ./apps/gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVICE_NAME=gateway
+    networks:
+      - smartlite-network
+    depends_on:
+      - input-handler
+
+  input-handler:
+    build: ./apps/input-handler
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVICE_NAME=input-handler
+    networks:
+      - smartlite-network
+
+  preprocessor:
+    build: ./apps/preprocessor
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVICE_NAME=preprocessor
+    networks:
+      - smartlite-network
+
+  asr-service:
+    build: ./apps/asr-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SERVICE_NAME=asr-service
+      - MODEL_PATH=/models/asr
+    volumes:
+      - ./models:/models
+    networks:
+      - smartlite-network
+
+  text-cleaner:
+    build: ./apps/text-cleaner
+    ports:
+      - "8084:8084"
+    environment:
+      - SERVICE_NAME=text-cleaner
+    networks:
+      - smartlite-network
+
+  llm-service:
+    build: ./apps/llm-service
+    ports:
+      - "8085:8085"
+    environment:
+      - SERVICE_NAME=llm-service
+      - MODEL_PATH=/models/llm
+    volumes:
+      - ./models:/models
+    networks:
+      - smartlite-network
+
+  semantic-formatter:
+    build: ./apps/semantic-formatter
+    ports:
+      - "8086:8086"
+    environment:
+      - SERVICE_NAME=semantic-formatter
+    networks:
+      - smartlite-network
+
+  tts-service:
+    build: ./apps/tts-service
+    ports:
+      - "8087:8087"
+    environment:
+      - SERVICE_NAME=tts-service
+      - MODEL_PATH=/models/tts
+    volumes:
+      - ./models:/models
+    networks:
+      - smartlite-network
+
+  audio-post:
+    build: ./apps/audio-post
+    ports:
+      - "8088:8088"
+    environment:
+      - SERVICE_NAME=audio-post
+    networks:
+      - smartlite-network
+
+  encoder:
+    build: ./apps/encoder
+    ports:
+      - "8089:8089"
+    environment:
+      - SERVICE_NAME=encoder
+    networks:
+      - smartlite-network
+
+  delivery:
+    build: ./apps/delivery
+    ports:
+      - "8090:8090"
+    environment:
+      - SERVICE_NAME=delivery
+    networks:
+      - smartlite-network
+
+networks:
+  smartlite-network:
+    driver: bridge
+
+volumes:
+  models:

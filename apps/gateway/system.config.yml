@@ -1,0 +1,34 @@
+# Core
+db:
+  redis:
+    host: localhost
+    port: 6379
+    namespace: EG
+
+# OAuth2 Settings
+session:
+  secret: keyboard cat
+  resave: false
+  saveUninitialized: false
+
+accessTokens:
+  timeToExpiry: 7200000
+
+refreshTokens:
+  timeToExpiry: 7200000
+
+authorizationCodes:
+  timeToExpiry: 300000
+
+# Logging
+systemEndpoints:
+  admin:
+    host: localhost
+    port: 9876
+
+# Custom Plugins
+plugins:
+  express-gateway-plugin-cors:
+    package: express-gateway-plugin-cors
+  express-gateway-plugin-logger:
+    package: express-gateway-plugin-logger

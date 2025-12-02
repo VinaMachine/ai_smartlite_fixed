@@ -1,33 +1,24 @@
-# Gateway Dockerfile (Express Gateway or similar)
-FROM node:20-alpine as base
+FROM node:18-alpine
 
 WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
 
 # Install dependencies
-COPY package*.json ./
 RUN npm ci --only=production
 
-# Production stage
-FROM node:20-alpine
+# Copy gateway configuration
+COPY gateway.config.yml ./
+COPY system.config.yml ./
+COPY server.js ./
 
-WORKDIR /app
-
-# Copy dependencies
-COPY --from=base /app/node_modules ./node_modules
-
-# Copy application
-COPY . .
-
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser && \
-    chown -R appuser:appuser /app
-
-USER appuser
-
+# Expose gateway port
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-CMD ["node", "server.js"]
+# Start the gateway
+CMD ["npm", "start"]

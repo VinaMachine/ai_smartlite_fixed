@@ -1,0 +1,29 @@
+{
+    "version": "2.2",
+    "schema_version": "2020-12",
+    "fallback_behavior": "use_default",
+    "sources": {
+        "model_registry": "internal",
+        "registry_url": "https://registry.smartlite.internal/",
+        "auth_required": true,
+        "auth_method": "token",
+        "auth_header": "X-Registry-Key"
+    },
+    "locales": {
+        "vi-VN": {
+            "asr_pack": "wenet_vi_v2",
+            "llm_tier": "qwen-1b",
+            "tts_pack": "piper_vi"
+        },
+        "en-US": {
+            "asr_pack": "whisper_en",
+            "llm_tier": "qwen-1b",
+            "tts_pack": "xtts2_en"
+        },
+        "th-TH": {
+            "asr_pack": "whisper_th",
+            "llm_tier": "qwen-1b",
+            "tts_pack": "xtts2_th"
+        }
+    }
+}

@@ -1,0 +1,300 @@
+http:
+  port: 8080
+
+apiEndpoints:
+  # Input Handler Endpoints
+  inputHandler:
+    host: localhost
+    paths: '/api/input/*'
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+  
+  # Preprocessor Endpoints
+  preprocessor:
+    host: localhost
+    paths: '/api/preprocess/*'
+    methods: ['GET', 'POST']
+  
+  # ASR Service Endpoints
+  asrService:
+    host: localhost
+    paths: '/api/asr/*'
+    methods: ['GET', 'POST']
+  
+  # Text Cleaner Endpoints
+  textCleaner:
+    host: localhost
+    paths: '/api/text-clean/*'
+    methods: ['POST']
+  
+  # LLM Service Endpoints
+  llmService:
+    host: localhost
+    paths: '/api/llm/*'
+    methods: ['GET', 'POST']
+  
+  # Semantic Formatter Endpoints
+  semanticFormatter:
+    host: localhost
+    paths: '/api/semantic/*'
+    methods: ['POST']
+  
+  # TTS Service Endpoints
+  ttsService:
+    host: localhost
+    paths: '/api/tts/*'
+    methods: ['GET', 'POST']
+  
+  # Audio Post-Processing Endpoints
+  audioPost:
+    host: localhost
+    paths: '/api/audio-post/*'
+    methods: ['POST']
+  
+  # Encoder Endpoints
+  encoder:
+    host: localhost
+    paths: '/api/encode/*'
+    methods: ['POST']
+  
+  # Delivery Endpoints
+  delivery:
+    host: localhost
+    paths: '/api/delivery/*'
+    methods: ['GET', 'POST', 'DELETE']
+  
+  # Health Check Endpoint
+  health:
+    host: localhost
+    paths: '/health'
+    methods: ['GET']
+
+serviceEndpoints:
+  inputHandlerService:
+    url: 'http://input-handler:8081'
+  
+  preprocessorService:
+    url: 'http://preprocessor:8082'
+  
+  asrService:
+    url: 'http://asr-service:8083'
+  
+  textCleanerService:
+    url: 'http://text-cleaner:8084'
+  
+  llmService:
+    url: 'http://llm-service:8085'
+  
+  semanticFormatterService:
+    url: 'http://semantic-formatter:8086'
+  
+  ttsService:
+    url: 'http://tts-service:8087'
+  
+  audioPostService:
+    url: 'http://audio-post:8088'
+  
+  encoderService:
+    url: 'http://encoder:8089'
+  
+  deliveryService:
+    url: 'http://delivery:8090'
+
+policies:
+  - basic-auth
+  - cors
+  - expression
+  - key-auth
+  - log
+  - oauth2
+  - proxy
+  - rate-limit
+  - request-transformer
+  - response-transformer
+
+pipelines:
+  inputHandlerPipeline:
+    apiEndpoints:
+      - inputHandler
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Input Handler Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - request-transformer:
+          - action:
+              headers:
+                add:
+                  X-Gateway-Timestamp: '${Date.now()}'
+      - proxy:
+          - action:
+              serviceEndpoint: inputHandlerService
+              changeOrigin: true
+
+  preprocessorPipeline:
+    apiEndpoints:
+      - preprocessor
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Preprocessor Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: preprocessorService
+              changeOrigin: true
+
+  asrServicePipeline:
+    apiEndpoints:
+      - asrService
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'ASR Service Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 50
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: asrService
+              changeOrigin: true
+
+  textCleanerPipeline:
+    apiEndpoints:
+      - textCleaner
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Text Cleaner Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: textCleanerService
+              changeOrigin: true
+
+  llmServicePipeline:
+    apiEndpoints:
+      - llmService
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'LLM Service Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 30
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: llmService
+              changeOrigin: true
+
+  semanticFormatterPipeline:
+    apiEndpoints:
+      - semanticFormatter
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Semantic Formatter Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: semanticFormatterService
+              changeOrigin: true
+
+  ttsServicePipeline:
+    apiEndpoints:
+      - ttsService
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'TTS Service Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 50
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: ttsService
+              changeOrigin: true
+
+  audioPostPipeline:
+    apiEndpoints:
+      - audioPost
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Audio Post Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: audioPostService
+              changeOrigin: true
+
+  encoderPipeline:
+    apiEndpoints:
+      - encoder
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Encoder Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: encoderService
+              changeOrigin: true
+
+  deliveryPipeline:
+    apiEndpoints:
+      - delivery
+    policies:
+      - cors:
+      - log:
+          - action:
+              message: 'Delivery Request: ${req.method} ${req.url}'
+      - rate-limit:
+          - action:
+              max: 100
+              windowMs: 60000
+      - proxy:
+          - action:
+              serviceEndpoint: deliveryService
+              changeOrigin: true
+
+  healthPipeline:
+    apiEndpoints:
+      - health
+    policies:
+      - log:
+          - action:
+              message: 'Health Check Request'
+      - proxy:
+          - action:
+              serviceEndpoint: inputHandlerService
+              changeOrigin: true
